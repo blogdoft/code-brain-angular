@@ -124,4 +124,6 @@ jobs:
             echo "code-brain-angular@$VERSION is already published - skipping."
             exit 0
           fi
-          npm publish "artifacts/code-brain-angular-$VERSION.tgz" --access public --provenance --tag "$DIST_TAG"
+          # The ./ prefix is required: without it npm misparses "artifacts/*.tgz" as a
+          # "github:artifacts/*.tgz" shorthand spec instead of a local file path.
+          npm publish "./artifacts/code-brain-angular-$VERSION.tgz" --access public --provenance --tag "$DIST_TAG"
