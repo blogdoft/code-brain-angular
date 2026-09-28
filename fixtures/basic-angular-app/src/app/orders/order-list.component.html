@@ -1,0 +1,12 @@
+<h2>{{ heading() }}</h2>
+<ul>
+  @for (order of orders(); track order.id) {
+    <li (click)="select(order)">{{ order.total }} - {{ order.status | orderStatus }}</li>
+  } @empty {
+    <li>No orders</li>
+  }
+</ul>
+<p>{{ totalLabel() }}</p>
+<input [value]="query()" (input)="query.set($any($event.target).value)" />
+<lib-badge [label]="heading()" />
+<vendor-widget></vendor-widget>

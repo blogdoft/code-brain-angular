@@ -1,0 +1,85 @@
+# Build and validation on Forgejo: formatting, type checking, tests, and the packed tarball
+# verified the way users get it (scripts/verify-package.sh: contents, npx install, smoke test).
+# Publishing never happens here - releases are published from GitHub (.github/workflows/release.yml)
+# once the mirror carries the v* tag over.
+#
+# The `ciir` job analyzes this repository with the freshly built tool (dogfooding, like the
+# `ciir` job of code-csharp-ciir). It runs on pushes only and, on a v* tag push, also sends the
+# resulting ciir.jsonl to the code-ciir-indexer - but only when the CIIR_BASE_URL variable is
+# configured, so a repository without the indexer settings still gets a green pipeline. Needs the
+# repo/org variables CIIR_BASE_URL, CIIR_PROJECT_ID (this repository's project id in the
+# indexer) and CIIR_CLIENT_ID, and the repo secret CIIR_CLIENT_SECRET (a confidential Keycloak
+# client with Service accounts enabled).
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same ref makes the running validation stale.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: self-hosted
+    # A fixed Node image: the runner host's own toolchain is not relied upon, and
+    # actions/checkout (a Node action) works out of the box inside it.
+    container:
+      image: node:24-bookworm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # A throwaway pre-release version: the real version only exists on a release tag.
+      - name: Verify package (contents, npx install, smoke test)
+        run: scripts/verify-package.sh "0.0.0-ci.${{ github.run_number }}"
+
+  ciir:
+    needs: validate
+    if: github.event_name == 'push'
+    runs-on: self-hosted
+    container:
+      image: node:24-bookworm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Analyze this repository with code-brain-angular
+        env:
+          CIIR_BASE_URL: ${{ vars.CIIR_BASE_URL }}
+          CIIR_PROJECT_ID: ${{ vars.CIIR_PROJECT_ID }}
+          CIIR_CLIENT_ID: ${{ vars.CIIR_CLIENT_ID }}
+          CIIR_CLIENT_SECRET: ${{ secrets.CIIR_CLIENT_SECRET }}
+          CIIR_NOLOGO: "1"
+        run: |
+          args=(. --output ciir-output --fail-on-error --no-progress)
+          if [[ "$GITHUB_REF_TYPE" == "tag" && -n "$CIIR_BASE_URL" ]]; then
+            args+=(--send "$CIIR_BASE_URL" --projectId "$CIIR_PROJECT_ID" --clientId "$CIIR_CLIENT_ID" --clientSecret "$CIIR_CLIENT_SECRET" --insecure)
+          fi
+          node dist/cli/main.js "${args[@]}"
+        shell: bash

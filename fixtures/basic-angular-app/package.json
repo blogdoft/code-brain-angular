@@ -1,0 +1,11 @@
+{
+  "name": "demo-workspace",
+  "private": true,
+  "scripts": { "build": "ng build" },
+  "dependencies": {
+    "@angular/common": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/router": "^22.2.0",
+    "rxjs": "~7.8.0"
+  }
+}

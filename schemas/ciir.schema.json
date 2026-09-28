@@ -1,0 +1,483 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ciir:schema:1.2",
+  "title": "Code Intelligence Intermediate Representation (CIIR)",
+  "description": "A language-independent intermediate representation describing statically observable software entities, their semantic properties, source evidence, relationships, documentation and selected control-flow characteristics, plus configuration and generic-file metadata. See docs/ciir-specification.md for the semantic meaning of each concept defined here.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "kind", "language", "project", "symbol"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "description": "The CIIR contract version this document conforms to, e.g. \"1.0\"."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Deterministic document identity. Two analyses of the same semantic symbol MUST produce the same id."
+    },
+    "kind": {
+      "$ref": "#/$defs/kind"
+    },
+    "language": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The source language, e.g. \"csharp\". Open-ended to allow future language generators."
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The logical project this entity belongs to."
+    },
+    "symbol": {
+      "$ref": "#/$defs/symbol"
+    },
+    "source": {
+      "$ref": "#/$defs/sourceLocation"
+    },
+    "additionalSourceLocations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourceLocation" },
+      "minItems": 1,
+      "description": "Additional physical declarations for entities with more than one (C# partial types/methods)."
+    },
+    "documentation": {
+      "$ref": "#/$defs/documentation"
+    },
+    "comments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/comment" },
+      "minItems": 1
+    },
+    "relations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relation" },
+      "minItems": 1
+    },
+    "conditions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/condition" },
+      "minItems": 1
+    },
+    "controlFlow": {
+      "$ref": "#/$defs/controlFlow"
+    },
+    "type": {
+      "$ref": "#/$defs/typeInfo"
+    },
+    "method": {
+      "$ref": "#/$defs/methodInfo"
+    },
+    "property": {
+      "$ref": "#/$defs/propertyInfo"
+    },
+    "field": {
+      "$ref": "#/$defs/fieldInfo"
+    },
+    "event": {
+      "$ref": "#/$defs/eventInfo"
+    },
+    "configurationKey": {
+      "$ref": "#/$defs/configurationKeyInfo"
+    },
+    "file": {
+      "$ref": "#/$defs/fileInfo"
+    },
+    "embeddingText": {
+      "type": "string",
+      "description": "Deterministic semantic-projection text used for embedding generation. Never contains the embedding vector itself."
+    },
+    "embeddingTextStrategy": {
+      "type": "string",
+      "description": "The name of the strategy used to produce embeddingText, e.g. \"semantic-v1\"."
+    },
+    "embeddingTextHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "SHA-256 hash of the exact embeddingText content."
+    },
+    "extensions": {
+      "$ref": "#/$defs/extensions"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "type" } }, "required": ["kind"] },
+      "then": { "required": ["type"] }
+    },
+    {
+      "if": {
+        "properties": { "kind": { "enum": ["method", "constructor"] } },
+        "required": ["kind"]
+      },
+      "then": { "required": ["method"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "property" } }, "required": ["kind"] },
+      "then": { "required": ["property"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "field" } }, "required": ["kind"] },
+      "then": { "required": ["field"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "event" } }, "required": ["kind"] },
+      "then": { "required": ["event"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "configuration_key" } }, "required": ["kind"] },
+      "then": { "required": ["configurationKey"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "file" } }, "required": ["kind"] },
+      "then": { "required": ["file"] }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "project",
+        "namespace",
+        "type",
+        "method",
+        "constructor",
+        "property",
+        "field",
+        "event",
+        "function",
+        "file",
+        "parameter",
+        "database",
+        "table",
+        "column",
+        "view",
+        "procedure",
+        "function_db",
+        "trigger",
+        "configuration",
+        "configuration_key",
+        "endpoint",
+        "message"
+      ],
+      "description": "The kind of software entity represented. The C# v1 generator produces: project, namespace, type, method, constructor, property, field, event. The configuration/YAML generator produces: configuration, configuration_key, file. The remaining values are reserved for future language generators."
+    },
+    "symbol": {
+      "type": "object",
+      "required": ["name", "qualifiedName", "canonicalName"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "qualifiedName": { "type": "string", "minLength": 1 },
+        "canonicalName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unambiguous identity of the symbol, distinguishing overloads."
+        },
+        "container": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "range": {
+      "type": "object",
+      "required": ["startLine", "endLine"],
+      "properties": {
+        "startLine": { "type": "integer", "minimum": 1 },
+        "startColumn": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "endColumn": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false,
+      "description": "A 1-based line/column range within the same file as the owning entity's source location."
+    },
+    "sourceLocation": {
+      "type": "object",
+      "required": ["path", "startLine", "startColumn", "endLine", "endColumn"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path relative to the analysis root. Never an absolute machine path."
+        },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "startColumn": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "endColumn": { "type": "integer", "minimum": 1 },
+        "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "text": { "type": "string", "description": "Only populated with --include-source." }
+      },
+      "additionalProperties": false
+    },
+    "documentationParameter": {
+      "type": "object",
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "documentationException": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "documentation": {
+      "type": "object",
+      "required": ["format", "source"],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["xml-doc", "javadoc", "jsdoc", "tsdoc", "docstring", "markdown", "plain", "unknown"]
+        },
+        "source": {
+          "type": "string",
+          "enum": ["declared", "unknown"]
+        },
+        "summary": { "type": "string" },
+        "remarks": { "type": "string" },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/documentationParameter" },
+          "minItems": 1
+        },
+        "returns": { "type": "string" },
+        "exceptions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/documentationException" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "comment": {
+      "type": "object",
+      "required": ["kind", "text", "location"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["line", "block", "todo", "fixme", "warning", "note"]
+        },
+        "text": { "type": "string" },
+        "location": { "$ref": "#/$defs/range" }
+      },
+      "additionalProperties": false
+    },
+    "relationTarget": {
+      "type": "object",
+      "required": ["symbol"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "The target's CIIR document id, when the target is itself represented in this analysis."
+        },
+        "symbol": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "relationResolution": {
+      "type": "object",
+      "required": ["status", "origin"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["resolved", "unresolved", "ambiguous", "external", "dynamic"]
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["project", "solution", "dependency", "framework", "runtime", "external_service", "unknown"]
+        },
+        "reason": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "relation": {
+      "type": "object",
+      "required": ["kind", "target", "resolution"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["contains", "inherits", "implements", "overrides", "calls", "constructs", "reads", "writes", "throws", "catches"]
+        },
+        "target": { "$ref": "#/$defs/relationTarget" },
+        "resolution": { "$ref": "#/$defs/relationResolution" },
+        "location": { "$ref": "#/$defs/range" }
+      },
+      "additionalProperties": false
+    },
+    "condition": {
+      "type": "object",
+      "required": ["kind", "expression", "location"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["if", "else_if", "switch", "switch_expression", "while", "do_while", "for", "foreach", "conditional_expression", "guard"]
+        },
+        "expression": { "type": "string" },
+        "location": { "$ref": "#/$defs/range" },
+        "reads": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "controlFlow": {
+      "type": "object",
+      "required": ["basicBlockCount", "cyclomaticComplexity", "hasBranches", "hasLoops"],
+      "properties": {
+        "basicBlockCount": { "type": "integer", "minimum": 0 },
+        "cyclomaticComplexity": { "type": "integer", "minimum": 1 },
+        "hasBranches": { "type": "boolean" },
+        "hasLoops": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "accessibility": {
+      "type": "string",
+      "enum": ["unknown", "private", "private_protected", "protected", "internal", "protected_internal", "public"]
+    },
+    "modifier": {
+      "type": "string",
+      "enum": ["const", "static", "readonly", "volatile", "extern", "virtual", "abstract", "sealed", "override", "unsafe", "partial", "required", "async"]
+    },
+    "parameter": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "typeInfo": {
+      "type": "object",
+      "required": ["typeKind", "accessibility"],
+      "properties": {
+        "typeKind": {
+          "type": "string",
+          "enum": ["class", "interface", "struct", "record", "enum", "delegate", "unknown"]
+        },
+        "accessibility": { "$ref": "#/$defs/accessibility" },
+        "modifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modifier" },
+          "minItems": 1
+        },
+        "genericParameters": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "methodInfo": {
+      "type": "object",
+      "required": ["accessibility"],
+      "properties": {
+        "accessibility": { "$ref": "#/$defs/accessibility" },
+        "modifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modifier" },
+          "minItems": 1
+        },
+        "parameters": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parameter" },
+          "minItems": 1
+        },
+        "returnType": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Omitted for constructors, which have no return type."
+        },
+        "embeddingReturnType": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The semantic return type used for the embeddingText \"Returns\" section (e.g. the unwrapped T of a Task<T>). Falls back to returnType when omitted."
+        }
+      },
+      "additionalProperties": false
+    },
+    "propertyInfo": {
+      "type": "object",
+      "required": ["accessibility", "type", "hasGetter", "hasSetter"],
+      "properties": {
+        "accessibility": { "$ref": "#/$defs/accessibility" },
+        "modifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modifier" },
+          "minItems": 1
+        },
+        "type": { "type": "string", "minLength": 1 },
+        "hasGetter": { "type": "boolean" },
+        "hasSetter": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "fieldInfo": {
+      "type": "object",
+      "required": ["accessibility", "type"],
+      "properties": {
+        "accessibility": { "$ref": "#/$defs/accessibility" },
+        "modifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modifier" },
+          "minItems": 1
+        },
+        "type": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "eventInfo": {
+      "type": "object",
+      "required": ["accessibility", "type"],
+      "properties": {
+        "accessibility": { "$ref": "#/$defs/accessibility" },
+        "modifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modifier" },
+          "minItems": 1
+        },
+        "type": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "configurationKeyInfo": {
+      "type": "object",
+      "required": ["valueType"],
+      "properties": {
+        "valueType": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "array", "object", "null"],
+          "description": "The JSON value type at this key path. The value itself is never captured."
+        }
+      },
+      "additionalProperties": false
+    },
+    "fileInfo": {
+      "type": "object",
+      "required": ["sizeBytes"],
+      "properties": {
+        "sizeBytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object",
+      "properties": {
+        "csharp": {
+          "type": "object",
+          "description": "C#-specific details that do not belong in the universal CIIR model, e.g. whether a record is a record struct."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,89 @@
+# Mirrors this repository to GitHub (all branches and tags, deleting on the GitHub side
+# anything removed here). Runs on pushes to main, on pushed v* tags, manually, and daily at
+# 20:00 America/Sao_Paulo time (23:00 UTC - Brazil has had no DST since 2019) via a cron
+# schedule. Every run mirrors the full state of origin, whichever ref triggered it.
+# On weekdays (Monday to Friday) it only mirrors between 20:00 and 07:00 America/Sao_Paulo
+# time; on Saturdays and Sundays that window is not checked. Outside the window nothing is done
+# (a weekday push during working hours is picked up by the 20:00 cron run).
+#
+# The mirrored v* tag is what triggers the npm release on GitHub (.github/workflows/release.yml),
+# so a tag pushed on a weekday during working hours is published after 20:00. Use a manual run
+# (workflow_dispatch) inside the window, or on a weekend, to release right away.
+#
+# Requires a Forgejo repo secret configured in Settings > Actions > Secrets:
+#   MIRROR_GITHUB_TOKEN - a GitHub Personal Access Token (classic, "repo" scope, or
+#   fine-grained with "Contents: read and write") for an account with push access to
+#   https://github.com/blogdoft/code-brain-angular. A classic token also needs the "workflow"
+#   scope (fine-grained: "Workflows: read and write"), because the mirrored refs contain
+#   .github/workflows files.
+name: Mirror to GitHub
+
+on:
+  # Only main and release tags, not every branch: feature branches are picked up by the daily
+  # run, and a main push right before a tag push is what the concurrency guard below handles.
+  push:
+    branches: [main]
+    tags: ["v*"]
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+# Guards against overlapping runs racing on the same working directory's refs. Each run mirrors
+# the full current state of origin, so it's safe (and more efficient) to drop a still-running,
+# now-stale run in favor of the newest.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu
+    steps:
+      # Monday to Friday: only inside 20:00-07:00. Saturday and Sunday: no window check.
+      - name: Check the mirroring window
+        id: window
+        run: |
+          # Brazil has had no DST since 2019, so a fixed UTC-3 offset is America/Sao_Paulo time.
+          set -- $(date -u -d '3 hours ago' '+%u %-H')
+          weekday=$1 hour=$2 # weekday: 1 = Monday ... 7 = Sunday; hour: 0-23
+          if [ "$weekday" -ge 6 ] || [ "$hour" -ge 20 ] || [ "$hour" -lt 7 ]; then
+            open=true
+          else
+            open=false
+            echo "Weekday outside 20:00-07:00 (Sao Paulo time): nothing to do."
+          fi
+          echo "open=$open" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.window.outputs.open == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all branches and tags
+        if: steps.window.outputs.open == 'true'
+        run: |
+          git fetch origin --prune '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+          git update-ref -d refs/remotes/origin/HEAD 2>/dev/null || true
+
+      # The token is kept out of the push URL/argv on purpose: embedding it as
+      # `x-access-token:$TOKEN@github.com` would put the literal secret into this step's process
+      # arguments (visible via `ps`/`/proc/<pid>/cmdline` on the runner while the command runs)
+      # and into the generated step script on disk. Feeding it to git via an env var + inline
+      # credential helper means the push URL and script text never contain the secret value.
+      #
+      # The retry clears a transient push failure (network hiccup, GitHub API blip) without
+      # masking a genuine one, which fails both attempts identically.
+      - name: Push mirror to GitHub
+        if: steps.window.outputs.open == 'true'
+        env:
+          MIRROR_GITHUB_TOKEN: ${{ secrets.MIRROR_GITHUB_TOKEN }}
+        run: |
+          for attempt in 1 2; do
+            git -c credential.helper='!f() { echo "username=x-access-token"; echo "password=$MIRROR_GITHUB_TOKEN"; }; f' \
+              push --prune https://github.com/blogdoft/code-brain-angular.git \
+              "+refs/remotes/origin/*:refs/heads/*" \
+              "+refs/tags/*:refs/tags/*" && exit 0
+            echo "::warning::push to GitHub mirror failed (attempt $attempt/2) - retrying in case this is a transient failure"
+          done
+          exit 1

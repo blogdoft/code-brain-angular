@@ -1,0 +1,14 @@
+{
+  // Comments are allowed here, as in any Angular workspace.
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "experimentalDecorators": true,
+    "skipLibCheck": true,
+    "paths": {
+      "shared-lib": ["./projects/shared-lib/src/public-api.ts"]
+    }
+  }
+}

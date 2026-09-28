@@ -1,0 +1,68 @@
+{
+  "name": "code-brain-angular",
+  "version": "0.0.0-local",
+  "description": "Static analyzer that turns TypeScript/JavaScript (with first-class Angular support) into CIIR - Code Intelligence Intermediate Representation.",
+  "license": "GPL-3.0-only",
+  "author": "ftathiago",
+  "homepage": "https://www.blogdoft.com.br/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blogdoft/code-brain-angular.git"
+  },
+  "bugs": {
+    "url": "https://github.com/blogdoft/code-brain-angular/issues"
+  },
+  "type": "module",
+  "bin": {
+    "code-brain-angular": "dist/cli/main.js"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write src tests",
+    "format:check": "prettier --check src tests",
+    "start": "node dist/cli/main.js",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "ciir",
+    "angular",
+    "typescript",
+    "static-analysis",
+    "code-intelligence"
+  ],
+  "dependencies": {
+    "@angular/compiler": "^22.2.0",
+    "commander": "^15.0.0",
+    "jsonc-parser": "^3.3.1",
+    "typescript": "~6.0.3"
+  },
+  "devDependencies": {
+    "@angular/common": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/forms": "^22.2.0",
+    "@angular/platform-browser": "^22.2.0",
+    "@angular/router": "^22.2.0",
+    "@types/node": "^24.19.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "prettier": "^3.9.9",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.8.1",
+    "vitest": "^5.0.2"
+  }
+}

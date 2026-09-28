@@ -1,0 +1,127 @@
+# Builds, validates, packs and (on a version tag) publishes code-brain-angular to npmjs.com.
+#
+# Release flow: tag vX.Y.Z on Forgejo -> the mirror workflow pushes it to GitHub -> this workflow
+# runs. The publish job waits for approval on the "npm" environment (configure required
+# reviewers), since a version published to npm can never be replaced (only deprecated, or
+# unpublished within 72 hours).
+#
+# Authentication, in the order npm tries it (npm CLI >= 11.5.1):
+#   1. npm Trusted Publishing (OIDC) - no long-lived token. Configure it on npmjs.com under
+#      the package's Settings > Trusted publisher: GitHub Actions, organization/user "blogdoft",
+#      repository "code-brain-angular", workflow "release.yml", environment "npm". It can only be
+#      configured once the package exists, so the very first version needs option 2.
+#   2. The NPM_TOKEN secret (a granular access token with "Read and write" on packages, or an
+#      "Automation" token), exposed as NODE_AUTH_TOKEN. Delete it once trusted publishing works.
+# Either way the package is published with provenance (the repository field in package.json
+# must keep pointing at github.com/blogdoft/code-brain-angular).
+#
+# The version comes from the tag; package.json keeps 0.0.0-local and is never edited by hand.
+# A pre-release tag (v1.2.0-rc.1) is published under the "next" dist-tag, anything else under
+# "latest". workflow_dispatch is a dry run: validate + pack + verify, never publishes.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      dist-tag: ${{ steps.version.outputs.dist-tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Tag '$GITHUB_REF_NAME' is not a valid vMAJOR.MINOR.PATCH[-prerelease] version"
+              exit 1
+            fi
+          else
+            version="0.0.0-dryrun.${GITHUB_RUN_NUMBER}"
+          fi
+          if [[ "$version" == *-* ]]; then dist_tag=next; else dist_tag=latest; fi
+          echo "Version: $version (dist-tag: $dist_tag)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dist-tag=$dist_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Pack and verify (contents, npx install, smoke test)
+        run: scripts/verify-package.sh "${{ steps.version.outputs.version }}"
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts/code-brain-angular-${{ steps.version.outputs.version }}.tgz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write # npm Trusted Publishing (OIDC) and provenance
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing needs npm >= 11.5.1.
+      - name: Update npm
+        run: npm install --global npm@latest
+
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: artifacts
+
+      # The equivalent of `dotnet nuget push --skip-duplicate`: re-running a release is harmless.
+      - name: Publish to npmjs.com
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
+        run: |
+          if npm view "code-brain-angular@$VERSION" version >/dev/null 2>&1; then
+            echo "code-brain-angular@$VERSION is already published - skipping."
+            exit 0
+          fi
+          npm publish "artifacts/code-brain-angular-$VERSION.tgz" --access public --provenance --tag "$DIST_TAG"

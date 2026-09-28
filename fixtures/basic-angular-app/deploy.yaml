@@ -1,0 +1,3 @@
+# Deployment descriptor: captured only as file metadata (never parsed).
+name: demo
+replicas: 2
